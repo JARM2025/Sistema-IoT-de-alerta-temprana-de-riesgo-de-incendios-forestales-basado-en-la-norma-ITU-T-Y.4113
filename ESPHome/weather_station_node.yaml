@@ -1,0 +1,99 @@
+esphome:
+  name: nodo_dht22
+  comment: Firmware declarativo del nodo sensor ESP32 con DHT22
+  platform: ESP32
+  board: esp32dev
+
+wifi:
+  ssid: "WeatherStation"
+  password: "Univalle"
+  # Punto de acceso de respaldo (fallback) para configuración local
+  ap:
+    ssid: "esp32-fallback"
+    password: "Univalle"
+
+mqtt:
+  broker: 192.168.50.1
+  port: 1883
+  topic_prefix: weatherstation
+  discovery: false
+  on_message:
+    - topic: sync/timestamp
+      then:
+        - lambda: |-
+            id(last_timestamp) = x.c_str();
+            id(read_dht).execute();
+
+# Variables globales
+globals:
+  - id: error_count
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: last_timestamp
+    type: std::string
+    restore_value: no
+    initial_value: ""
+
+# Sensor DHT22 conectado al pin GPIO23
+sensor:
+  - platform: dht
+    model: DHT22
+    pin: GPIO23
+    temperature:
+      name: "temperature"
+      id: temperature_sensor
+      accuracy_decimals: 1
+    humidity:
+      name: "humidity"
+      id: humidity_sensor
+      accuracy_decimals: 1
+    update_interval: never
+
+# Script: lectura sincronizada + validación y publicación
+script:
+  - id: read_dht
+    then:
+      # Validación de rangos y manejo de contador de errores
+      - lambda: |-
+          const float t = id(temperature_sensor).state;
+          const float h = id(humidity_sensor).state;
+          const bool invalid = isnan(t) || isnan(h) || t < 0 || t > 60 || h < 0 || h > 100;
+          if (invalid) {
+            id(error_count)++;
+            ESP_LOGE("sensor", "Lectura inválida (%d errores consecutivos)", id(error_count));
+            if (id(error_count) >= 5) {
+              ESP_LOGE("sensor", "Reinicio automático por fallos consecutivos");
+              ESP.restart();
+            }
+          }
+
+      # Si la lectura es válida, resetear contador y publicar JSON
+      - if:
+          condition:
+            lambda: |-
+              const float t = id(temperature_sensor).state;
+              const float h = id(humidity_sensor).state;
+              return !(isnan(t) || isnan(h) || t < 0 || t > 60 || h < 0 || h > 100);
+          then:
+            - lambda: |-
+                id(error_count) = 0;
+            - mqtt.publish:
+                topic: data/sensor/1
+                payload: !lambda |-
+                  char json_str[200];
+                  snprintf(json_str, sizeof(json_str),
+                           "{\"sensor_id\":1,\"temperature\":%.1f,"
+                           "\"humidity\":%.1f,\"timestamp\":\"%s\"}",
+                           id(temperature_sensor).state,
+                           id(humidity_sensor).state,
+                           id(last_timestamp).c_str());
+                  return std::string(json_str);
+
+# Logs locales para depuración
+logger:
+  level: DEBUG
+
+# Servicio OTA para actualizaciones remotas
+ota:
