@@ -1,3 +1,30 @@
+###############################################################################
+# Proyecto: Sistema IoT de alerta temprana de riesgo de incendios forestales
+# Archivo:  weather_station_node.yaml
+# Autor:    Alejandro Rincón Maldonado
+# Versión:  v1.0.0
+# Fecha:    2025-11-07
+# Plataforma: ESP32 DevKit V1
+# Descripción:
+#   Firmware declarativo desarrollado con ESPHome para un nodo sensor de
+#   temperatura y humedad basado en DHT22. El nodo se sincroniza mediante
+#   mensajes MQTT con la Raspberry Pi, realiza mediciones solo al recibir
+#   un timestamp desde el tópico 'sync/timestamp', valida los datos, maneja
+#   reinicios automáticos ante fallos consecutivos y publica lecturas en JSON.
+#
+# Requisitos:
+#   - Broker MQTT activo en la Raspberry Pi (por defecto 192.168.50.1)
+#   - Red Wi-Fi 'WeatherStation' con punto de acceso de respaldo
+#   - ESPHome >= 2024.6.0
+#
+# Publicaciones MQTT:
+#   - data/sensor/1 → lecturas JSON de temperatura y humedad
+#   - weatherstation/status → estado del nodo (online/offline)
+#   - weatherstation/debug → mensajes de depuración
+#
+# Licencia: MIT License © 2025 Alejandro Rincón Maldonado
+###############################################################################
+
 esphome:
   name: nodo_dht22
   comment: Firmware declarativo del nodo sensor ESP32 con DHT22
