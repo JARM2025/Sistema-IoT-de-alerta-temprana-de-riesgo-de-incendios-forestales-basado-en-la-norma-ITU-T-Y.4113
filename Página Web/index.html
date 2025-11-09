@@ -1,0 +1,1712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Weather Station</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="favicon.png">
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #121821;
+    --muted: #9fb0c3;
+    --text: #e9f0f6;
+    --accent: #4aa3ff;
+    --ok: #2ecc71;
+    --warn: #f1c40f;
+    --err: #e74c3c;
+    --border: #1e2936;
+    --apply-bg: #4aa3ff;
+    --apply-bg-hover: #3795fc;
+    --apply-fg: #081018;
+    --zoom-bg: #ffd166;
+    --zoom-fg: #231a00;
+    --text-sm: 12px;
+    --text-base: 14px;
+    --text-lg: 16px;
+    --text-xl: 18px;
+    --box-h: 62vh;
+    --header-h: 64px;
+  }
+  *{box-sizing: border-box;}
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; font-size: var(--text-base); line-height: 1.5; overflow-x: hidden; }
+  a { color: var(--accent); text-decoration: none; }
+  header { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; background: var(--panel); border-bottom: 1px solid var(--border); box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+  header h1 { margin: 0; font-size: var(--text-xl); font-weight: 700; }
+  .hdr-title-row{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;grid-template-areas:"title status" "tabs tabs";gap:10px;align-items:center;width:100%;}
+  .hdr-title-row>h1{grid-area:title;}
+  .hdr-right{grid-area:tabs;display:inline-flex;align-items:center;gap:10px;justify-self:start;}
+  .status{grid-area:status;justify-self:end;display:inline-flex;align-items:center;gap:6px;font-size:var(--text-sm);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .status .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--warn); }
+  .status .dot.ok { background: var(--ok); }
+  .status .dot.err { background: var(--err); }
+  .spacer { display: none; }
+  .tabs { display: inline-flex; gap: 6px; padding: 4px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,.04); }
+  .tab { appearance: none; border: 1px solid var(--border); background: transparent; color: var(--text); padding: 6px 12px; border-radius: 10px; font-weight: 600; font-size: var(--text-base); cursor: pointer; }
+  .tab[aria-selected="true"] { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.55); }
+  [role="tabpanel"] { display: none; }
+  [role="tabpanel"][data-active="true"] { display: block; }
+  /* Summary: overlay de carga + sello de tiempo en el título */
+  .summary-updating{position:absolute;inset:8px;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.10);backdrop-filter:blur(1px);border-radius:12px;font-weight:700;color:#aeb9c6;letter-spacing:.3px}
+  .card.loading .summary-updating{display:flex}
+  .card .title-time{opacity:.7;font-weight:500;margin-left:.5rem;font-size:.9rem}
+  .summary-grid{display:grid;gap:12px;padding:0 16px 16px;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(260px,35vh);}
+  .summary-card { border: 1px solid var(--border); background: var(--panel); border-radius: 14px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .summary-card h3 { margin: 0; font-size: var(--text-lg); color: var(--muted); font-weight: 700; }
+  /* FS en Summary */
+  .summary-card{position:relative;}
+  .summary-card .fs-btn{position:absolute; top:8px; right:8px; z-index:2;}
+  .kpichart{flex:1;min-height:0;width:100%;height:100%;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.02);}
+  .placeholder { flex: 1; display: grid; place-items: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; }
+  @media (max-width:684px){.summary-grid{grid-template-columns:1fr;}}
+  .sectionbar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 12px 12px 8px; border-bottom: 1px solid var(--border); background: var(--panel); margin: 0 16px 4px; cursor: pointer; user-select: none; border-radius: 12px; transition: background .15s ease; }
+  .sectionbar:hover { background: rgba(255,255,255,.04); }
+  .sectionbar h2 { margin: 0; font-weight: 700; font-size: var(--text-lg); text-align: center; }
+  .sectionbar h2::after { content: "▾"; font-size: var(--text-base); margin-left: 10px; opacity: .6; }
+  .sectionbar[aria-expanded="false"] h2::after { content: "▸"; }
+  .detail-row { display: flex; gap: 12px; flex-wrap: wrap; padding: 0 16px; }
+  .col { flex: 1; min-width: 320px; }
+  .box { margin: 12px 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--panel); height: var(--box-h); box-shadow: 0 1px 0 rgba(255,255,255,.03), 0 6px 18px rgba(0,0,0,.3); display: flex; flex-direction: column; }
+  .box-head { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 8px 10px; border-bottom: 1px solid var(--border); background: rgba(0,0,0,.08); }
+  .box-head .title { font-size: var(--text-base); font-weight: 600; color: var(--muted); }
+  .icon-btn { display: inline-grid; place-items: center; width: 34px; height: 32px; padding: 0; border: 1px solid var(--border); background: rgba(255,255,255,.06); color: var(--text); border-radius: 10px; cursor: pointer; }
+  .kpi-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--border); flex-wrap: wrap; row-gap: 6px; background: rgba(0,0,0,.05); }
+  .kpi-label { font-size: var(--text-sm); color: var(--muted); margin-right: 4px; }
+  .kpi-pill { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px; background: #0e131a; min-width: 110px; }
+  .kpi-pill .name { font-size: var(--text-sm); color: var(--muted); }
+  .kpi-pill .val { font-size: var(--text-lg); font-weight: 700; }
+  .ctrl-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--border); flex-wrap: wrap; row-gap: 8px; }
+  .ctrl-label { font-size: var(--text-sm); color: var(--muted); }
+  .ctrl-pair { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .ctrl-bar select, .ctrl-bar button { background: #0e131a; color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; font-size: var(--text-base); }
+  .ctrl-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .ctrl-bar .btn-primary { background: var(--apply-bg); border-color: transparent; color: var(--apply-fg); font-weight: 800; cursor: pointer; font-size: var(--text-base); box-shadow: 0 2px 0 rgba(0,0,0,.15); }
+  .ctrl-bar .btn-primary:hover { background: var(--apply-bg-hover); }
+  .ctrl-bar .btn-primary[disabled] { opacity: .6; cursor: progress; }
+  .toggle { cursor: pointer; font-size: var(--text-base); font-weight: 600; }
+  .frame { position: relative; flex: 1; min-height: 0; }
+  .chart { position: absolute; inset: 0; }
+  .overlay-center { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  .overlay-center .pill { pointer-events: auto; background: #0e131a; color: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: var(--text-base); box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+  .overlay-center[hidden] { display: none; }
+  .spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); border-top-color: var(--accent); animation: spin .9s linear infinite; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .msg { position: absolute; inset: auto 12px 12px auto; background: #0e131a; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; color: var(--muted); font-size: var(--text-sm); }
+  .footer { padding: 16px 20px; color: var(--muted); font-size: var(--text-sm); border-top: 1px solid var(--border); display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .footer-right { display: flex; gap: 10px; align-items: center; }
+  .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--err); box-shadow: 0 0 0 1px rgba(0,0,0,.3) inset; }
+  .live-dot.on { background: var(--ok); }
+  .zoom-pill { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 6; background: var(--zoom-bg); color: var(--zoom-fg); border: 0; border-radius: 10px; padding: 6px 10px; font-size: var(--text-sm); font-weight: 800; box-shadow: 0 3px 10px rgba(0,0,0,.35); }
+  .zoom-pill[hidden] { display: none; }
+  .docs-backdrop { position: fixed; left: 0; right: 0; top: var(--header-h); bottom: 0; background: rgba(0,0,0,.45); opacity: 0; transition: opacity .18s ease; pointer-events: none; z-index: 18; }
+  .docs-backdrop[data-open="true"] { opacity: 1; pointer-events: auto; }
+  .docs-drawer { position: fixed; top: var(--header-h); right: 0; width: min(920px,96vw); height: calc(100dvh - var(--header-h)); background: var(--panel); border-left: 1px solid var(--border); box-shadow: -20px 0 60px rgba(0,0,0,.55); transform: translateX(100%); transition: transform .22s ease; z-index: 19; display: flex; flex-direction: column; pointer-events: none; }
+  .docs-drawer[data-open="true"] { transform: translateX(0); pointer-events: auto; }
+  .docs-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,.04); }
+  .docs-title { margin: 0; font-weight: 800; font-size: 16px; }
+  .docs-close { appearance: none; background: #0e131a; color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; cursor: pointer; }
+  .docs-body { padding: 14px; overflow: auto; flex: 1; display: grid; gap: 16px; }
+  .doc-card { border: 1px solid var(--border); background: var(--panel); border-radius: 12px; padding: 14px; }
+  .doc-card h2, .doc-card h3 { margin: 0 0 8px 0; color: var(--text); }
+  .doc-card h2 { font-size: 18px; }
+  .doc-card h3 { font-size: 16px; color: var(--muted); }
+  .toc { display: grid; gap: 6px; }
+  .api-table { width: 100%; border-collapse: collapse; overflow: auto; }
+  .api-table th, .api-table td { border: 1px solid var(--border); padding: 8px; text-align: left; vertical-align: top; }
+  .api-table th { background: rgba(255,255,255,.05); }
+  .tag { display: inline-block; padding: 2px 6px; border-radius: 6px; background: #0e131a; border: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12.5px; }
+  pre { background: #0e131a; border: 1px solid var(--border); padding: 10px; border-radius: 10px; overflow: auto; }
+  .t-muted { color: var(--muted); }
+  .warn { color: #ffd166; }
+  .ok { color: #2ecc71; }
+  .err { color: #e74c3c; }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts-liquidfill@3/dist/echarts-liquidfill.min.js"></script>
+<script src="https://unpkg.com/lucide@0.451.0/dist/umd/lucide.js"></script>
+<script src="https://code.highcharts.com/highcharts.js"></script>
+<script src="https://code.highcharts.com/highcharts-more.js"></script>
+<script src="https://code.highcharts.com/modules/solid-gauge.js"></script>
+</head>
+<body>
+<header id="app-header" style="position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--border); padding: 10px 12px; z-index: 30;">
+  <div class="hdr-title-row">
+    <h1 style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Weather Station Dashboard</h1>
+    <div class="hdr-right">
+      <div class="tabs" role="tablist" aria-label="Views" aria-orientation="horizontal" id="tablist">
+        <button class="tab" role="tab" id="tab-summary" aria-controls="panel-summary" aria-selected="true">Summary</button>
+        <button class="tab" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false">Details</button>
+      </div>
+    </div>
+    <div class="status">
+      <span id="api-dot" class="dot"></span>
+      <span id="api-status">Checking API...</span>
+    </div>
+  </div>
+</header>
+<main>
+<section id="panel-summary" role="tabpanel" aria-labelledby="tab-summary" data-active="true">
+  <div class="summary-grid">
+    <div class="summary-card">
+      <h3>F Index</h3>
+      <div id="sum-findex" class="kpichart" role="img" aria-label="F Index gauge"></div>
+    </div>
+    <div class="summary-card">
+      <h3>Temperature</h3>
+      <div id="sum-temp" class="kpichart" role="img" aria-label="Temperature gauge"></div>
+    </div>
+    <div class="summary-card">
+      <h3>Humidity</h3>
+      <div id="sum-hum" class="kpichart" role="img" aria-label="Humidity gauge"></div>
+    </div>
+    <div class="summary-card">
+      <h3>Wind Speed</h3>
+      <div id="sum-wind" class="kpichart" role="img" aria-label="Wind speed gauge"></div>
+    </div>
+  </div>
+</section>
+<section id="panel-details" role="tabpanel" aria-labelledby="tab-details" data-active="false">
+  <div class="sectionbar" data-target="sec-findex" aria-controls="sec-findex" aria-expanded="true" role="button" tabindex="0">
+    <div></div><h2>F Index</h2><div></div>
+  </div>
+  <div id="sec-findex" class="detail-row">
+    <div class="col">
+      <div class="box" data-panel="findex">
+        <div class="box-head">
+          <span class="title">F Index — Timeseries</span>
+          <button class="icon-btn fs-btn" title="Fullscreen" aria-label="Fullscreen"><i data-lucide="maximize-2"></i></button>
+        </div>
+        <div class="kpi-bar">
+          <span class="kpi-label">KPIs:</span>
+          <div class="kpi-pill"><span class="name">Last</span><span class="val" data-kpi="last">—</span></div>
+          <div class="kpi-pill"><span class="name">Avg</span><span class="val" data-kpi="avg">—</span></div>
+          <div class="kpi-pill"><span class="name">Min</span><span class="val" data-kpi="min">—</span></div>
+          <div class="kpi-pill"><span class="name">Max</span><span class="val" data-kpi="max">—</span></div>
+        </div>
+        <div class="ctrl-bar">
+          <span class="ctrl-label">Options:</span>
+          <div class="ctrl-pair">
+            <label class="ctrl-label" for="range-findex">Range</label>
+            <select id="range-findex" data-role="range">
+              <option value="1m">Last 1 min</option>
+              <option value="5m" selected>Last 5 min</option>
+              <option value="10m">Last 10 min</option>
+              <option value="15m">Last 15 min</option>
+              <option value="1h">Last 1 h</option>
+              <option value="6h">Last 6 h</option>
+              <option value="24h">Last 24 h</option>
+              <option value="7d">Last 7 d</option>
+            </select>
+          </div>
+          <div class="ctrl-pair">
+            <label class="ctrl-label" for="agg-findex">Aggregation</label>
+            <select id="agg-findex" data-role="agg">
+              <option value="raw" selected>Raw</option>
+              <option value="mean">Mean</option>
+              <option value="min">Min</option>
+              <option value="max">Max</option>
+              <option value="median">Median</option>
+              <option value="count">Count</option>
+            </select>
+          </div>
+<div class="ctrl-pair">
+  <label class="ctrl-label" for="interval-findex">Interval</label>
+  <select id="interval-findex" data-role="interval">
+    <option value="auto" selected>Auto</option>
+    <option value="10s">10 s</option>
+    <option value="30s">30 s</option>
+    <option value="1m">1 min</option>
+    <option value="5m">5 min</option>
+    <option value="10m">10 min</option>
+    <option value="30m">30 min</option>
+    <option value="1h">1 h</option>
+  </select>
+</div>
+          <div class="ctrl-pair">
+            <label class="ctrl-label" for="fill-findex">Fill</label>
+            <select id="fill-findex" data-role="fill">
+              <option value="none" selected>None</option>
+              <option value="previous">Previous</option>
+            </select>
+          </div>
+          <div class="ctrl-right">
+            <button class="toggle" data-live><span class="live-dot"></span>Live</button>
+            <button class="btn-primary" data-apply>Apply</button>
+          </div>
+        </div>
+        <div class="frame">
+          <div class="zoom-pill" hidden data-zoom-indicator>Zoom active — Live paused</div>
+          <div id="chart-fidx" class="chart"></div>
+          <div class="overlay-center" data-nodata hidden><div class="pill">No data</div></div>
+          <div class="overlay-center" data-loading hidden aria-live="polite"><div class="pill" style="display:flex;align-items:center;"><span class="spinner"></span> Updating…</div></div>
+          <div class="msg" hidden data-error>error fetching data — retrying…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="sectionbar" data-target="sec-s1" aria-controls="sec-s1" aria-expanded="true" role="button" tabindex="0">
+    <div></div><h2>Sensor 1 (DHT22)</h2><div></div>
+  </div>
+  <div id="sec-s1" class="detail-row">
+    <div class="col">
+      <div class="box" data-panel="temperature">
+        <div class="box-head">
+          <span class="title">Temperature — Timeseries</span>
+          <button class="icon-btn fs-btn" title="Fullscreen" aria-label="Fullscreen"><i data-lucide="maximize-2"></i></button>
+        </div>
+        <div class="kpi-bar">
+          <span class="kpi-label">KPIs:</span>
+          <div class="kpi-pill"><span class="name">Last</span><span class="val" data-kpi="last">—</span><span class="unit">°C</span></div>
+          <div class="kpi-pill"><span class="name">Avg</span><span class="val" data-kpi="avg">—</span><span class="unit">°C</span></div>
+          <div class="kpi-pill"><span class="name">Min</span><span class="val" data-kpi="min">—</span><span class="unit">°C</span></div>
+          <div class="kpi-pill"><span class="name">Max</span><span class="val" data-kpi="max">—</span><span class="unit">°C</span></div>
+        </div>
+        <div class="ctrl-bar">
+          <span class="ctrl-label">Options:</span>
+          <div class="ctrl-pair">
+            <label class="ctrl-label" for="range-temp">Range</label>
+            <select id="range-temp" data-role="range">
+              <option value="1m">Last 1 min</option>
+              <option value="5m" selected>Last 5 min</option>
+              <option value="10m">Last 10 min</option>
+              <option value="15m">Last 15 min</option>
+              <option value="1h">Last 1 h</option>
+              <option value="6h">Last 6 h</option>
+              <option value="24h">Last 24 h</option>
+              <option value="7d">Last 7 d</option>
+            </select>
+          </div>
+          <div class="ctrl-pair">
+            <label class="ctrl-label" for="agg-temp">Aggregation</label>
+            <select id="agg-temp" data-role="agg">
+              <option value="raw" selected>Raw</option>
+              <option value="mean">Mean</option>
+              <option value="min">Min</option>
+              <option value="max">Max</option>
+              <option value="median">Median</option>
+              <option value="count">Count</option>
+            </select>
+          </div>
+<div class="ctrl-pair">
+  <label class="ctrl-label" for="interval-temp">Interval</label>
+  <select id="interval-temp" data-role="interval">
+    <option value="auto" selected>Auto</option>
+    <option value="10s">10 s</option>
+    <option value="30s">30 s</option>
+    <option value="1m">1 min</option>
+    <option value="5m">5 min</option>
+    <option value="10m">10 min</option>
+    <option value="30m">30 min</option>
+    <option value="1h">1 h</option>
+  </select>
+</div>
+          <div class="ctrl-pair">
+            <label class="ctrl-label" for="fill-temp">Fill</label>
+            <select id="fill-temp" data-role="fill">
+              <option value="none" selected>None</option>
+              <option value="previous">Previous</option>
+            </select>
+          </div>
+          <div class="ctrl-right">
+            <button class="toggle" data-live><span class="live-dot"></span>Live</button>
+            <button class="btn-primary" data-apply>Apply</button>
+          </div>
+        </div>
+        <div class="frame">
+          <div class="zoom-pill" hidden data-zoom-indicator>Zoom active — Live paused</div>
+          <div id="chart-temp" class="chart"></div>
+          <div class="overlay-center" data-nodata hidden><div class="pill">No data</div></div>
+          <div class="overlay-center" data-loading hidden aria-live="polite"><div class="pill" style="display:flex;align-items:center;"><span class="spinner"></span> Updating…</div></div>
+          <div class="msg" hidden data-error>error fetching data — retrying…</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="box" data-panel="humidity">
+        <div class="box-head">
+          <span class="title">Humidity — Timeseries</span>
+          <button class="icon-btn fs-btn" title="Fullscreen" aria-label="Fullscreen"><i data-lucide="maximize-2"></i></button>
+        </div>
+        <div class="kpi-bar">
+          <span class="kpi-label">KPIs:</span>
+          <div class="kpi-pill"><span class="name">Last</span><span class="val" data-kpi="last">—</span><span class="unit">%</span></div>
+          <div class="kpi-pill"><span class="name">Avg</span><span class="val" data-kpi="avg">—</span><span class="unit">%</span></div>
+          <div class="kpi-pill"><span class="name">Min</span><span class="val" data-kpi="min">—</span><span class="unit">%</span></div>
+          <div class="kpi-pill"><span class="name">Max</span><span class="val" data-kpi="max">—</span><span class="unit">%</span></div>
+        </div>
+        <div class="ctrl-bar">
+          <span class="ctrl-label">Options:</span>
+          <div class="ctrl-pair">
+            <label class="ctrl-label" for="range-hum">Range</label>
+            <select id="range-hum" data-role="range">
+              <option value="1m">Last 1 min</option>
+              <option value="5m" selected>Last 5 min</option>
+              <option value="10m">Last 10 min</option>
+              <option value="15m">Last 15 min</option>
+              <option value="1h">Last 1 h</option>
+              <option value="6h">Last 6 h</option>
+              <option value="24h">Last 24 h</option>
+              <option value="7d">Last 7 d</option>
+            </select>
+          </div>
+          <div class="ctrl-pair">
+            <label class="ctrl-label" for="agg-hum">Aggregation</label>
+            <select id="agg-hum" data-role="agg">
+              <option value="raw" selected>Raw</option>
+              <option value="mean">Mean</option>
+              <option value="min">Min</option>
+              <option value="max">Max</option>
+              <option value="median">Median</option>
+              <option value="count">Count</option>
+            </select>
+          </div>
+<div class="ctrl-pair">
+  <label class="ctrl-label" for="interval-hum">Interval</label>
+  <select id="interval-hum" data-role="interval">
+    <option value="auto" selected>Auto</option>
+    <option value="10s">10 s</option>
+    <option value="30s">30 s</option>
+    <option value="1m">1 min</option>
+    <option value="5m">5 min</option>
+    <option value="10m">10 min</option>
+    <option value="30m">30 min</option>
+    <option value="1h">1 h</option>
+  </select>
+</div>
+          <div class="ctrl-pair">
+            <label class="ctrl-label" for="fill-hum">Fill</label>
+            <select id="fill-hum" data-role="fill">
+              <option value="none" selected>None</option>
+              <option value="previous">Previous</option>
+            </select>
+          </div>
+          <div class="ctrl-right">
+            <button class="toggle" data-live><span class="live-dot"></span>Live</button>
+            <button class="btn-primary" data-apply>Apply</button>
+          </div>
+        </div>
+        <div class="frame">
+          <div class="zoom-pill" hidden data-zoom-indicator>Zoom active — Live paused</div>
+          <div id="chart-hum" class="chart"></div>
+          <div class="overlay-center" data-nodata hidden><div class="pill">No data</div></div>
+          <div class="overlay-center" data-loading hidden aria-live="polite"><div class="pill" style="display:flex;align-items:center;"><span class="spinner"></span> Updating…</div></div>
+          <div class="msg" hidden data-error>error fetching data — retrying…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="sectionbar" data-target="sec-s2" aria-controls="sec-s2" aria-expanded="true" role="button" tabindex="0">
+    <div></div><h2>Sensor 2 (Anemometer)</h2><div></div>
+  </div>
+  <div id="sec-s2" class="detail-row">
+    <div class="col">
+      <div class="box" data-panel="wind">
+        <div class="box-head">
+          <span class="title">Wind Speed — Timeseries</span>
+          <button class="icon-btn fs-btn" title="Fullscreen" aria-label="Fullscreen"><i data-lucide="maximize-2"></i></button>
+        </div>
+        <div class="kpi-bar">
+          <span class="kpi-label">KPIs:</span>
+          <div class="kpi-pill"><span class="name">Last</span><span class="val" data-kpi="last">—</span><span class="unit">m/s</span></div>
+          <div class="kpi-pill"><span class="name">Avg</span><span class="val" data-kpi="avg">—</span><span class="unit">m/s</span></div>
+          <div class="kpi-pill"><span class="name">Min</span><span class="val" data-kpi="min">—</span><span class="unit">m/s</span></div>
+          <div class="kpi-pill"><span class="name">Max</span><span class="val" data-kpi="max">—</span><span class="unit">m/s</span></div>
+        </div>
+        <div class="ctrl-bar">
+          <span class="ctrl-label">Options:</span>
+          <div class="ctrl-pair">
+            <label class="ctrl-label" for="range-wind">Range</label>
+            <select id="range-wind" data-role="range">
+              <option value="1m">Last 1 min</option>
+              <option value="5m" selected>Last 5 min</option>
+              <option value="10m">Last 10 min</option>
+              <option value="15m">Last 15 min</option>
+              <option value="1h">Last 1 h</option>
+              <option value="6h">Last 6 h</option>
+              <option value="24h">Last 24 h</option>
+              <option value="7d">Last 7 d</option>
+            </select>
+          </div>
+          <div class="ctrl-pair">
+            <label class="ctrl-label" for="agg-wind">Aggregation</label>
+            <select id="agg-wind" data-role="agg">
+              <option value="raw" selected>Raw</option>
+              <option value="mean">Mean</option>
+              <option value="min">Min</option>
+              <option value="max">Max</option>
+              <option value="median">Median</option>
+              <option value="count">Count</option>
+            </select>
+          </div>
+<div class="ctrl-pair">
+  <label class="ctrl-label" for="interval-wind">Interval</label>
+  <select id="interval-wind" data-role="interval">
+    <option value="auto" selected>Auto</option>
+    <option value="10s">10 s</option>
+    <option value="30s">30 s</option>
+    <option value="1m">1 min</option>
+    <option value="5m">5 min</option>
+    <option value="10m">10 min</option>
+    <option value="30m">30 min</option>
+    <option value="1h">1 h</option>
+  </select>
+</div>
+          <div class="ctrl-pair">
+            <label class="ctrl-label" for="fill-wind">Fill</label>
+            <select id="fill-wind" data-role="fill">
+              <option value="none" selected>None</option>
+              <option value="previous">Previous</option>
+            </select>
+          </div>
+          <div class="ctrl-right">
+            <button class="toggle" data-live><span class="live-dot"></span>Live</button>
+            <button class="btn-primary" data-apply>Apply</button>
+          </div>
+        </div>
+        <div class="frame">
+          <div class="zoom-pill" hidden data-zoom-indicator>Zoom active — Live paused</div>
+          <div id="chart-wind" class="chart"></div>
+          <div class="overlay-center" data-nodata hidden><div class="pill">No data</div></div>
+          <div class="overlay-center" data-loading hidden aria-live="polite"><div class="pill" style="display:flex;align-items:center;"><span class="spinner"></span> Updating…</div></div>
+          <div class="msg" hidden data-error>error fetching data — retrying…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+<div class="footer">
+  <div>API base: <code>/api</code> • <a href="/" rel="noreferrer">Home</a></div>
+  <div class="footer-right">
+    <button id="btn-open-docs" class="docs-close" aria-haspopup="dialog" aria-controls="docs-drawer">Docs</button>
+  </div>
+</div>
+<div class="docs-backdrop" id="docs-backdrop" aria-hidden="true"></div>
+<aside class="docs-drawer" id="docs-drawer" role="dialog" aria-modal="true" aria-labelledby="docs-title" aria-describedby="docs-scroll">
+  <div class="docs-head">
+    <h2 class="docs-title" id="docs-title">Weather Station API — Developer Reference</h2>
+    <button class="docs-close" id="btn-close-docs" aria-label="Close Docs">×</button>
+  </div>
+  <div class="docs-body" id="docs-scroll" tabindex="0">
+    <div class="doc-card" id="d-intro">
+      <p class="t-muted">This page documents the HTTP API used by the dashboard. All endpoints are served from the same origin under <code>/api</code>.</p>
+      <div class="toc">
+        <a href="#d-endpoints">1. Endpoints</a>
+        <a href="#d-params">2. Query Parameters</a>
+        <a href="#d-agg">3. Aggregation &amp; Bucketing</a>
+        <a href="#d-time">4. Time Ranges &amp; Time Zones</a>
+        <a href="#d-examples">5. Examples (cURL / fetch)</a>
+        <a href="#d-response">6. Response Schema</a>
+        <a href="#d-errors">7. Errors &amp; Status Codes</a>
+        <a href="#d-limits">8. Limits, Retention &amp; Performance</a>
+        <a href="#d-troubleshoot">9. Troubleshooting</a>
+      </div>
+    </div>
+    <div class="doc-card" id="d-endpoints">
+      <h2>1. Endpoints</h2>
+      <table class="api-table">
+        <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="tag">GET</span></td><td><code>/api/health</code></td><td>Basic health check. Returns service/database readiness.</td></tr>
+          <tr><td><span class="tag">GET</span></td><td><code>/api/range</code></td><td>Returns a time series for a given <code>measurement</code>/<code>field</code> and optional <code>sensor_id</code>. Supports raw or aggregated results.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="doc-card" id="d-params">
+      <h2>2. Query Parameters</h2>
+      <table class="api-table">
+        <thead><tr><th>Param</th><th>Type</th><th>Required</th><th>Example</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>measurement</code></td><td>string</td><td>Yes</td><td><code>sensor_data</code></td><td>Series/table name.</td></tr>
+          <tr><td><code>field</code></td><td>string</td><td>Yes</td><td><code>temperature</code></td><td>Numeric field to query.</td></tr>
+          <tr><td><code>sensor_id</code></td><td>string</td><td>No</td><td><code>1</code></td><td>Filter by sensor when applicable. Some measurements require it.</td></tr>
+          <tr><td><code>range</code></td><td>string</td><td>Yes</td><td><code>5m</code>, <code>24h</code>, <code>168h</code></td><td>Time span ending now. UI’s <code>7d</code> normalizes to <code>168h</code>.</td></tr>
+          <tr><td><code>interval</code></td><td>string</td><td>Cond.</td><td><code>10s</code>, <code>1m</code>, <code>5m</code>, <code>1h</code></td><td>Required for aggregated queries; omit for <code>raw</code>.</td></tr>
+          <tr><td><code>agg</code></td><td>enum</td><td>No</td><td><code>mean</code></td><td><code>raw</code> disables bucketing; others aggregate (mean/min/max/median/count).</td></tr>
+          <tr><td><code>fill</code></td><td>enum</td><td>No</td><td><code>previous</code></td><td>Gap filling for aggregated buckets. Omit to leave gaps; <code>previous</code> forward-fills.</td></tr>
+          <tr><td><code>limit</code></td><td>int</td><td>No</td><td><code>100000</code></td><td>Max points.</td></tr>
+          <tr><td><code>order</code></td><td>enum</td><td>No</td><td><code>ASC</code></td><td>Time ordering.</td></tr>
+          <tr><td><code>tz</code></td><td>string</td><td>No</td><td><code>America/Bogota</code></td><td>IANA timezone (bucket alignment).</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="doc-card" id="d-agg">
+      <h2>3. Aggregation &amp; Bucketing</h2>
+      <ul>
+        <li><strong>RAW</strong>: do not send <code>interval</code>/<code>agg</code>/<code>fill</code>. Returns raw points within <code>[now-range, now]</code>.</li>
+        <li><strong>Aggregated</strong>: send <code>interval</code> y <code>agg</code> (<code>auto</code>→<code>mean</code> fallback). <code>fill=previous</code> (optional) for forward-fill.</li>
+      </ul>
+      <p class="t-muted">Heuristic <strong>deriveInterval</strong> (client-side):<br>
+        <code>1m → 10s</code>; <code>5m → 30s</code>; <code>10m → 30s</code>; <code>15m → 1m</code>; <code>1h → 1m</code>; <code>6h → 5m</code>; <code>24h → 10m</code>; <code>7d → 1h</code>.
+      </p>
+    </div>
+
+    <div class="doc-card" id="d-time">
+      <h2>4. Time Ranges &amp; Time Zones</h2>
+      <ul>
+        <li><strong>Ranges</strong>: <code>1m</code>, <code>5m</code>, <code>10m</code>, <code>15m</code>, <code>1h</code>, <code>6h</code>, <code>24h</code>, <code>168h</code>.</li>
+        <li><strong>UI 7d → 168h</strong> (normalized for the API).</li>
+        <li><strong>tz</strong> (IANA) aligns buckets in aggregated queries. The UI uses the browser’s IANA time zone.</li>
+      </ul>
+    </div>
+
+    <div class="doc-card" id="d-examples">
+      <h2>5. Examples (cURL / fetch)</h2>
+
+      <h3>5.1 Temperature — RAW, last 5 minutes</h3>
+<pre><code>curl -G '/api/range' \
+  --data-urlencode 'measurement=sensor_data' \
+  --data-urlencode 'field=temperature' \
+  --data-urlencode 'sensor_id=1' \
+  --data-urlencode 'range=5m' \
+  --data-urlencode 'limit=100000' \
+  --data-urlencode 'order=ASC' \
+  --data-urlencode 'tz=America/Bogota'</code></pre>
+
+      <h3>5.2 Humidity — hourly mean, last 7 days</h3>
+<pre><code>curl -G '/api/range' \
+  --data-urlencode 'measurement=sensor_data' \
+  --data-urlencode 'field=humidity' \
+  --data-urlencode 'sensor_id=1' \
+  --data-urlencode 'range=168h' \
+  --data-urlencode 'interval=1h' \
+  --data-urlencode 'agg=mean' \
+  --data-urlencode 'fill=previous' \
+  --data-urlencode 'limit=100000' \
+  --data-urlencode 'order=ASC' \
+  --data-urlencode 'tz=America/Bogota'</code></pre>
+
+      <h3>5.3 Wind speed — RAW, last 24 hours (fetch API)</h3>
+<pre><code>const params = new URLSearchParams({
+  measurement: 'wind_data',
+  field: 'wind_speed',
+  sensor_id: '2',
+  range: '24h',
+  limit: '100000',
+  order: 'ASC',
+  tz: Intl.DateTimeFormat().resolvedOptions().timeZone
+});
+const res = await fetch('/api/range?' + params.toString());
+if (!res.ok) throw new Error('HTTP ' + res.status);
+const data = await res.json();</code></pre>
+
+      <h3>5.4 F Index — aggregated mean, last 6 hours</h3>
+<pre><code>curl -G '/api/range' \
+  --data-urlencode 'measurement=f_index' \
+  --data-urlencode 'field=F_index' \
+  --data-urlencode 'sensor_id=calcF' \
+  --data-urlencode 'range=6h' \
+  --data-urlencode 'interval=5m' \
+  --data-urlencode 'agg=mean' \
+  --data-urlencode 'limit=100000' \
+  --data-urlencode 'order=ASC' \
+  --data-urlencode 'tz=America/Bogota'</code></pre>
+    </div>
+    <div class="doc-card" id="d-response">
+      <h2>6. Response Schema</h2>
+<pre><code>{
+  "points": [
+    { "ts": "2025-09-12T23:59:50.000Z", "value": 24.5 },
+    { "ts": "2025-09-13T00:00:00.000Z", "value": 24.4 }
+  ]
+}</code></pre>
+      <p class="t-muted">ISO8601 timestamps in UTC. Ordering is controlled by <code>order</code> (default <code>ASC</code>).</p>
+    </div>
+
+    <div class="doc-card" id="d-errors">
+      <h2>7. Errors &amp; Status Codes</h2>
+      <table class="api-table">
+        <thead><tr><th>Status</th><th>Body</th><th>Meaning / Action</th></tr></thead>
+        <tbody>
+          <tr><td>200</td><td><code>{ points: [...] }</code></td><td>OK.</td></tr>
+          <tr><td>400</td><td><code>{ error: "invalid parameter ..." }</code></td><td>Missing/invalid parameter (e.g., <code>sensor_id</code> required).</td></tr>
+          <tr><td>404</td><td><code>{ error: "not found" }</code></td><td>Unknown measurement/field or sensor.</td></tr>
+          <tr><td>413</td><td><code>{ error: "result too large" }</code></td><td>Reduce <code>range</code> / aggregate / lower <code>limit</code>.</td></tr>
+          <tr><td>429</td><td><code>{ error: "rate limit" }</code></td><td>Retry with backoff.</td></tr>
+          <tr><td>500</td><td><code>{ error: "internal error" }</code></td><td>Server/DB problem; retry later.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="doc-card" id="d-limits">
+      <h2>8. Limits, Retention &amp; Performance</h2>
+      <ul>
+        <li><strong>Max points:</strong> <code>limit=100000</code>.</li>
+        <li><strong>Raw sampling:</strong> ~1 sample / 10s (typical). Use aggregation for long ranges.</li>
+        <li><strong>Retention:</strong> the database may compact/aggregate older data.</li>
+        <li><strong>Time zone:</strong> buckets align to <code>tz</code> in aggregated queries.</li>
+      </ul>
+    </div>
+
+    <div class="doc-card" id="d-troubleshoot">
+      <h2>9. Troubleshooting</h2>
+      <ul>
+        <li>“No data”: verify that points exist within the requested time window.</li>
+        <li>UI <code>7d</code> → <code>168h</code> (normalized for the API).</li>
+        <li>Zoom/brush pause Live; double-click or “Restore” to resume.</li>
+        <li>Use <code>sensor_id</code> when the measurement requires it (<code>sensor_data</code>).</li>
+      </ul>
+    </div>
+  </div> <!-- /docs-body -->
+</aside>
+<script>
+(function(){
+  'use strict';
+  const API_BASE = '';
+  const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+  // Altura del header → CSS var (para backdrop/drawer)
+  const headerEl = document.getElementById('app-header');
+  function applyHeaderHeight(){
+    document.documentElement.style.setProperty('--header-h', ((headerEl?.offsetHeight||64)) + 'px');
+  }
+  applyHeaderHeight();
+  window.addEventListener('resize', applyHeaderHeight);
+
+  // Tabs
+  const tabs = Array.from(document.querySelectorAll('.tab'));
+  const panels = {
+    'tab-summary': document.getElementById('panel-summary'),
+    'tab-details': document.getElementById('panel-details')
+  };
+  function activateTab(tabId, pushHash=true){
+    tabs.forEach(t=>t.setAttribute('aria-selected', t.id===tabId ? 'true':'false'));
+    Object.entries(panels).forEach(([id,el])=> el.dataset.active = (id===tabId));
+    if (pushHash) history.replaceState(null,'', tabId==='tab-summary' ? '#summary' : '#details');
+    if (tabId==='tab-details') setTimeout(allChartsResize, 60);
+  }
+  document.addEventListener('click', e=>{
+    const t=e.target.closest('.tab'); if(t) activateTab(t.id);
+  });
+  (function(){
+    const h=location.hash.toLowerCase();
+    activateTab(h.includes('detail')?'tab-details':'tab-summary', false);
+  })();
+
+  // Health
+  const apiDot=document.getElementById('api-dot'), apiStatus=document.getElementById('api-status');
+  async function checkHealth(){
+    try{
+      const r=await fetch(`${API_BASE}/api/health`,{cache:'no-store'});
+      if(!r.ok) throw 0;
+      const j=await r.json();
+      apiDot.classList.add('ok');
+      apiStatus.textContent=`OK • DB ${j.db ?? 'healthy'}`;
+    }catch{
+      apiDot.classList.add('err');
+      apiStatus.textContent='API unreachable';
+    }
+  }
+  checkHealth();
+
+  // Rango → ms
+  const RANGE_MS = { '1m':60e3, '5m':5*60e3, '10m':10*60e3, '15m':15*60e3, '1h':3600e3, '6h':6*3600e3, '24h':24*3600e3, '7d':7*24*3600e3 };
+  function rangeToMs(r){ return RANGE_MS[r] || 5*60e3; }
+  function normalizeRangeForApi(range){ return range === '7d' ? '168h' : range; }
+
+  // CHANGE: heurística 1m → 10s (antes 5s)
+  function deriveInterval(range){
+    switch(range){
+      case '1m':  return '10s';
+      case '5m':  return '30s';
+      case '10m': return '30s';
+      case '15m': return '1m';
+      case '1h':  return '1m';
+      case '6h':  return '5m';
+      case '24h': return '10m';
+      case '7d':  return '1h';
+      default: return null;
+    }
+  }
+  function stepToMs(s){
+    if(!s) return 60e3;
+    const m = /^(\d+)(s|m|h|d)$/.exec(s);
+    if(!m) return 60e3;
+    const n = +m[1]; const k = m[2]==='s'?1e3 : m[2]==='m'?60e3 : m[2]==='h'?3600e3 : 86400e3;
+    return n*k;
+  }
+
+  // === Alíneate al reloj local (cada N ms exactos: :00, :10, :20, …) ===
+  function scheduleAligned(periodMs, fn){
+    let stopped = false;
+    // ejecuta ahora mismo
+    fn();
+    (function loop(){
+      if (stopped) return;
+      const now = Date.now();
+      const next = Math.ceil(now / periodMs) * periodMs;
+      const delay = (() => {
+  const ms = Date.now() % 10000;
+  return (ms <= 5000) ? (5000 - ms) : (10000 - ms + 5000);
+})();
+setTimeout(() => {
+        if (stopped) return;
+        try { fn(); } finally { loop(); }
+      }, delay);
+    })();
+    return () => { stopped = true; };
+  }
+
+  // Huecos explícitos (aggregated): densificar buckets con null
+  function densifyBuckets(start, end, stepMs, serverPoints){
+    const map = new Map();
+    for(const p of serverPoints||[]){ const t = new Date(p.ts).getTime(); map.set(t, p.value); }
+    const out = [];
+    let t = Math.floor(start / stepMs) * stepMs;
+    if (t < start) t += stepMs;
+    for(; t <= end; t += stepMs){
+      out.push([t, map.has(t) ? map.get(t) : null]);
+    }
+    return out;
+  }
+
+  // Huecos en RAW: cortar línea cuando haya gap (según muestreo esperado)
+  function breakGapsRaw(points, stepMs){
+    if (!points || !points.length) return [];
+    const arr = points.map(p=>[new Date(p.ts).getTime(), p.value]).sort((a,b)=>a[0]-b[0]);
+    const out = [];
+    const gap = stepMs * 1.6; // si supera ~1.6x el paso esperado, cortamos
+    for (let i=0;i<arr.length;i++){
+      out.push(arr[i]);
+      const a = arr[i], b = arr[i+1];
+      if (b && (b[0]-a[0]) > gap){
+        out.push([a[0]+stepMs, null]);
+      }
+    }
+    return out;
+  }
+
+  // Compose params (contrato intacto: RAW ≠ interval/agg/fill)
+  function composeParams(range, aggMode, fill, intervalMode = 'auto'){
+  const p = new URLSearchParams();
+  p.set('order', 'ASC');
+  p.set('tz', TZ);
+  p.set('limit', '100000');
+  p.set('range', normalizeRangeForApi(range || '5m'));
+  if (aggMode && aggMode !== 'raw'){
+    const chosenAgg = (aggMode && aggMode !== 'auto') ? aggMode : 'mean';
+    const chosenInterval = (intervalMode && intervalMode !== 'auto') ? intervalMode : deriveInterval(range);
+    if (chosenInterval) p.set('interval', chosenInterval);
+    p.set('agg', chosenAgg);
+    if (fill && fill !== 'none') p.set('fill', fill);
+  }
+  return p;
+}
+
+  // Diagnóstico simple de cobertura (consola)
+  const EXPECTED_HOURS = { '1m':1/60, '5m':5/60, '10m':10/60, '15m':15/60, '1h':1, '6h':6, '24h':24, '7d':168 };
+  function analyzeCoverage(range, pts){
+    const res = { range, expectedHours: EXPECTED_HOURS[range] ?? null, count: (pts||[]).length };
+    if (!pts || !pts.length){ res.coveredHours = 0; res.coveragePct = 0; return res; }
+    const first = pts[0], last = pts[pts.length-1];
+    const minTs = +new Date(first.ts || first[0] || first);
+    const maxTs = +new Date(last.ts  || last[0]  || last);
+    const spanMs = Math.max(0, maxTs - minTs);
+    res.firstUTC = new Date(minTs).toISOString();
+    res.lastUTC  = new Date(maxTs).toISOString();
+    res.coveredHours = +(spanMs / 36e5).toFixed(3);
+    if (res.expectedHours){
+      res.coveragePct = +((res.coveredHours / res.expectedHours) * 100).toFixed(1);
+      res.densityPtsPerHour = +((res.count / res.coveredHours) || 0).toFixed(2);
+    }
+    return res;
+  }
+
+  // Series config
+  const SERIES = {
+    findex:      { dom:'chart-fidx', measurement:'f_index',     field:'F_index',     sensor_id:'calcF', unit:'' },
+    temperature: { dom:'chart-temp', measurement:'sensor_data', field:'temperature', sensor_id:'1',     unit:'°C' },
+    humidity:    { dom:'chart-hum',  measurement:'sensor_data', field:'humidity',    sensor_id:'1',     unit:'%' },
+    wind:        { dom:'chart-wind', measurement:'wind_data',   field:'wind_speed',  sensor_id:'2',     unit:'m/s' }
+  };
+
+  function allChartsResize(){
+    Object.values(SERIES).forEach(s=>{
+      const el=document.getElementById(s.dom);
+      const inst=echarts.getInstanceByDom(el);
+      if(inst) inst.resize();
+    });
+  }
+  window.addEventListener('resize', allChartsResize);
+
+  async function fetchSeries(src, params){
+    const p = new URLSearchParams(params);
+    p.set('measurement', src.measurement);
+    p.set('field', src.field);
+    if (src.sensor_id!=null && src.sensor_id!=='') p.set('sensor_id', src.sensor_id);
+    const url = `${API_BASE}/api/range?${p.toString()}`;
+    const r = await fetch(url, {cache:'no-store'});
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const json = await r.json();
+    console.debug(`[${src.field}] GET`, url, json?.points ? `(points=${json.points.length})` : '');
+    return json;
+  }
+
+  function baseChartOption(name, unit){
+    return {
+      animation:false,
+      tooltip:{trigger:'axis',axisPointer:{type:'cross'}},
+      grid:{left:12,right:12,top:56,bottom:40,containLabel:true},
+      xAxis:{type:'time',axisLabel:{color:'#9fb0c3'},splitLine:{show:true,lineStyle:{color:'#1e2936'}}},
+      yAxis:{type:'value',axisLabel:{color:'#9fb0c3'},splitLine:{lineStyle:{color:'#1e2936'}},name:unit||'',nameTextStyle:{color:'#9fb0c3',fontSize:13,fontWeight:600},nameGap:22},
+      dataZoom:[
+        {type:'inside',xAxisIndex:0,filterMode:'filter',zoomOnMouseWheel:true,moveOnMouseMove:true,moveOnMouseWheel:true,throttle:50},
+        {type:'slider',xAxisIndex:0,height:18,bottom:8,handleSize:12,brushSelect:true}
+      ],
+      brush:{toolbox:['rect','lineX','clear'],xAxisIndex:'all',brushMode:'single',throttleType:'debounce',throttleDelay:100},
+      toolbox:{
+        right:12, top:8, itemSize:16,
+        iconStyle:{borderColor:'#9fb0c3'}, emphasis:{iconStyle:{borderColor:'#fff'}},
+        feature:{dataZoom:{yAxisIndex:'none'},restore:{},saveAsImage:{backgroundColor:'#0b0f14',pixelRatio:2}}
+      },
+      series:[{type:'line',name,showSymbol:false,connectNulls:false,smooth:0.1,areaStyle:{opacity:0.08},data:[]}]
+    };
+  }
+
+  function computeKPIs(points){
+    if (!points || points.length===0) return {last:null, avg:null, min:null, max:null};
+    const last = points[points.length-1]?.value ?? null;
+    let sum=0, min=Infinity, max=-Infinity, count=0;
+    for (const p of points){ const v=+p.value; if (Number.isFinite(v)){ sum+=v; count++; if(v<min)min=v; if(v>max)max=v; } }
+    return { last, avg: count? sum/count : null, min: isFinite(min)?min:null, max: isFinite(max)?max:null };
+  }
+  function setKPI(container, kpis){
+    const f = (n)=> (n==null||Number.isNaN(n))?'—':n.toFixed(1);
+    container.querySelector('[data-kpi="last"]').textContent = f(kpis.last);
+    container.querySelector('[data-kpi="avg"]').textContent  = f(kpis.avg);
+    container.querySelector('[data-kpi="min"]').textContent  = f(kpis.min);
+    container.querySelector('[data-kpi="max"]').textContent  = f(kpis.max);
+  }
+  // === Helpers to manage Interval/Fill based on Aggregation/Range ===
+  function __msFromIntervalValue(val){
+    // accepts 'auto'|'10s'|'30s'|'1m'|'5m'|'10m'|'30m'|'1h'
+    if (!val || val==='auto') return null;
+    return stepToMs(val) || null;
+  }
+  function __clampIntervalOptions(rangeSel, aggSel, intervalSel, fillSel){
+    if (!rangeSel || !aggSel || !intervalSel) return;
+    const isRaw = (aggSel.value === 'raw');
+    // Enable/disable interval & fill
+    intervalSel.disabled = isRaw;
+    if (fillSel) fillSel.disabled = isRaw;
+    if (isRaw) return; // nothing else to do
+
+    // Limit interval options to <= range
+    const rangeMs = rangeToMs(rangeSel.value);
+    let fallback = 'auto';
+    // Find the largest allowed value <= range for fallback in case current becomes invalid
+    let largestAllowed = 'auto';
+    for (const opt of Array.from(intervalSel.options)){
+      if (opt.value === 'auto'){ opt.disabled = false; continue; }
+      const ms = __msFromIntervalValue(opt.value);
+      if (!ms){ opt.disabled = false; continue; }
+      const allow = ms <= rangeMs;
+      opt.disabled = !allow;
+      if (allow){ largestAllowed = opt.value; }
+    }
+    // If selected is disabled, switch to the largest allowed (or 'auto')
+    const selOpt = intervalSel.options[intervalSel.selectedIndex];
+    if (selOpt && selOpt.disabled){
+      // prefer last allowed option, else 'auto'
+      intervalSel.value = largestAllowed || 'auto';
+    }
+  }
+
+  function bindPanel(panelKey){
+    const src = SERIES[panelKey];
+    const box = document.querySelector(`.box[data-panel="${panelKey}"]`);
+    const chartEl = document.getElementById(src.dom);
+    const chart = echarts.init(chartEl);
+
+    const rangeSel = box.querySelector('select[data-role="range"]');
+    const aggSel   = box.querySelector('select[data-role=\"agg\"]');
+const intervalSel = box.querySelector('select[data-role="interval"]');
+    const fillSel  = box.querySelector('select[data-role="fill"]');
+    const liveBtn  = box.querySelector('[data-live]');
+    const applyBtn = box.querySelector('[data-apply]');
+    const errMsg   = box.querySelector('[data-error]');
+    const noDataEl = box.querySelector('[data-nodata]');
+    const loadingEl= box.querySelector('[data-loading]');
+    const zoomPill = box.querySelector('[data-zoom-indicator]');
+
+    // Initialize state and enforce allowed options
+    __clampIntervalOptions(rangeSel, aggSel, intervalSel, fillSel);
+
+    // Helper to (debounced) redraw immediately on control changes
+    let __redrawTimer = null;
+    const __redrawSoon = () => {
+      if (__redrawTimer) clearTimeout(__redrawTimer);
+      __redrawTimer = setTimeout(()=>{ drawOnce(); }, 50);
+    };
+
+    // React to UI changes: clamp + redraw
+    if (aggSel) aggSel.addEventListener('change', ()=>{ __clampIntervalOptions(rangeSel, aggSel, intervalSel, fillSel); __redrawSoon(); });
+    if (rangeSel) rangeSel.addEventListener('change', ()=>{ __clampIntervalOptions(rangeSel, aggSel, intervalSel, fillSel); __redrawSoon(); });
+    if (intervalSel) intervalSel.addEventListener('change', ()=>{ __clampIntervalOptions(rangeSel, aggSel, intervalSel, fillSel); __redrawSoon(); });
+    if (fillSel) fillSel.addEventListener('change', ()=>{ __redrawSoon(); });
+
+    // Fullscreen
+    const fsBtn = box.querySelector('.fs-btn');
+    function setFSIcon(isExit){
+      const i=fsBtn.querySelector('i');
+      if(i) i.setAttribute('data-lucide', isExit?'minimize-2':'maximize-2');
+      if(window.lucide){window.lucide.createIcons();}
+    }
+    fsBtn.addEventListener('click', async ()=>{
+      if(!document.fullscreenElement && !document.webkitFullscreenElement){
+        await (box.requestFullscreen?.()||box.webkitRequestFullscreen?.());
+        setTimeout(allChartsResize,120);
+      } else {
+        await (document.exitFullscreen?.()||document.webkitExitFullscreen?.());
+        setTimeout(allChartsResize,120);
+      }
+    });
+    document.addEventListener('fullscreenchange', ()=> setFSIcon(document.fullscreenElement===box));
+    document.addEventListener('webkitfullscreenchange', ()=> setFSIcon(document.webkitFullscreenElement===box));
+
+    function setLoading(on){ if(loadingEl) loadingEl.hidden = !on; if (applyBtn) applyBtn.disabled = !!on; }
+    function showZoomPill(show){ if (zoomPill) zoomPill.hidden = !show; }
+
+    async function drawOnce(){
+      const range = rangeSel.value, agg = aggSel.value, fill = fillSel.value;
+      __clampIntervalOptions(rangeSel, aggSel, intervalSel, fillSel);
+      const params = composeParams(range, agg, fill, (intervalSel && intervalSel.value ? intervalSel.value : 'auto'));
+      const now = Date.now();
+      const end = now;
+      const start = end - rangeToMs(range);
+
+      try{
+        setLoading(true); errMsg.hidden = true;
+        const data = await fetchSeries(src, params);
+        const option = baseChartOption(src.field, src.unit);
+
+        // --- Redondear el valor REAL de F_index a 1 decimal (solo en Details/F Index) ---
+        if (panelKey === 'findex' && data?.points?.length) {
+          data.points = data.points.map(p => {
+            const v = +p.value;
+            return Number.isFinite(v)
+              ? { ...p, value: Number(v.toFixed(1)) }  // <-- aquí se redondea de verdad
+              : p;
+          });
+        }
+
+        // Ventana fija de tiempo
+        option.xAxis.min = start;
+        option.xAxis.max = end;
+
+        const step = (intervalSel && intervalSel.value && intervalSel.value !== 'auto') ? stepToMs(intervalSel.value) : stepToMs(deriveInterval(range));
+let seriesData = [];
+        if (agg !== 'raw'){
+          seriesData = densifyBuckets(start, end, step, data.points);
+        }else{
+          seriesData = data.points && data.points.length ? breakGapsRaw(data.points, step) : [];
+        }
+
+        option.series[0].data = seriesData;
+        chart.setOption(option, true);
+
+        noDataEl.hidden = !!(data.points && data.points.length);
+        setKPI(box, computeKPIs(data.points));
+        state[panelKey].retries = 0;
+        showZoomPill(false);
+      }catch(e){
+        console.error('fetch error', panelKey, e);
+        errMsg.hidden = false;
+        const n = Math.min((state[panelKey]?.retries||0)+1, 6);
+        state[panelKey].retries = n;
+        clearTimeout(state[panelKey].retryTimer);
+        state[panelKey].retryTimer = setTimeout(drawOnce, Math.min(1000 * Math.pow(2, n-1), 30000));
+      }finally{
+        setTimeout(()=> setLoading(false), 200);
+      }
+    }
+
+    function setLive(on){
+      state[panelKey] = state[panelKey] || {};
+      state[panelKey].live = !!on;
+      const dot = liveBtn.querySelector('.live-dot'); if (dot) dot.classList.toggle('on', on);
+      // ← limpiamos cualquier scheduler previo (intervalo o alineado)
+      if (state[panelKey].liveTimer){ clearInterval(state[panelKey].liveTimer); state[panelKey].liveTimer = null; }
+      if (state[panelKey].liveStop){ state[panelKey].liveStop(); state[panelKey].liveStop = null; }
+
+  // ← programamos tick alineado a reloj local cada 10s
+  if (on) state[panelKey].liveStop = scheduleAligned(10000, drawOnce);
+    }
+
+    // Zoom/brush → pausa Live; doble click → reset + resume
+    chart.getZr().on('dblclick', ()=>{
+      chart.dispatchAction({type:'dataZoom', start:0, end:100});
+      showZoomPill(false);
+      setLive(true);
+    });
+    chart.on('datazoom', (e)=>{
+      if (e?.batch || e?.start != null) {
+        if (state[panelKey]?.live) setLive(false);
+        showZoomPill(true);
+      }
+    });
+    chart.on('brushEnd', (ev)=>{
+      try{
+        const area=ev.areas&&ev.areas[0];
+        if(!area||!area.coordRange) return;
+        const [minX,maxX]=area.coordRange;
+        chart.dispatchAction({type:'dataZoom',startValue:minX,endValue:maxX});
+        chart.dispatchAction({type:'brush',areas:[]});
+        if(state[panelKey]?.live) setLive(false);
+        showZoomPill(true);
+      }catch{}
+    });
+
+    liveBtn.addEventListener('click', ()=> setLive(!(state[panelKey]?.live)));
+    applyBtn.addEventListener('click', drawOnce);
+
+    state[panelKey] = state[panelKey] || {};
+    drawOnce(); setLive(true);
+  }
+
+  // Collapsibles
+  function keyFor(id){ return 'ws_collapsed_' + id; }
+  function restoreSections(){
+    document.querySelectorAll('.sectionbar').forEach(bar=>{
+      bar.setAttribute('role','button'); bar.setAttribute('tabindex','0');
+      const targetId = bar.dataset.target, target = document.getElementById(targetId);
+      if (!target) return;
+      const saved = localStorage.getItem(keyFor(targetId));
+      if (saved==='true'){ target.style.display='none'; bar.setAttribute('aria-expanded','false'); }
+      else { bar.setAttribute('aria-expanded','true'); }
+    });
+  }
+  function toggleSection(bar){
+    const target = document.getElementById(bar.dataset.target);
+    const willShow = target.style.display==='none';
+    target.style.display = willShow ? '' : 'none';
+    bar.setAttribute('aria-expanded', willShow?'true':'false');
+    try{ localStorage.setItem(keyFor(bar.dataset.target), (!willShow).toString()); }catch{}
+    if (willShow) setTimeout(allChartsResize, 60);
+  }
+  document.addEventListener('click', e=>{ const bar=e.target.closest('.sectionbar'); if(bar) toggleSection(bar); });
+  document.addEventListener('keydown', e=>{ const bar=e.target.closest('.sectionbar'); if(bar && (e.key==='Enter'||e.key===' ')){ e.preventDefault(); toggleSection(bar); }});
+  restoreSections();
+
+  // Bind panels
+  const state = {};
+  ['findex','temperature','humidity','wind'].forEach(bindPanel);
+
+  // Docs Drawer
+  const openDocsBtn = document.getElementById('btn-open-docs');
+  const closeDocsBtn = document.getElementById('btn-close-docs');
+  const docsDrawer = document.getElementById('docs-drawer');
+  const docsBackdrop = document.getElementById('docs-backdrop');
+  let lastFocus = null;
+
+  function openDocs(){
+    lastFocus=document.activeElement;
+    docsDrawer.setAttribute('data-open','true');
+    docsBackdrop.setAttribute('data-open','true');
+    docsBackdrop.setAttribute('aria-hidden','false');
+    document.getElementById('docs-scroll').focus();
+  }
+  function closeDocs(){
+    docsDrawer.removeAttribute('data-open');
+    docsBackdrop.removeAttribute('data-open');
+    docsBackdrop.setAttribute('aria-hidden','true');
+    if(lastFocus&&lastFocus.focus) lastFocus.focus();
+  }
+
+  openDocsBtn.addEventListener('click', openDocs);
+  closeDocsBtn.addEventListener('click', closeDocs);
+  docsBackdrop.addEventListener('click', closeDocs);
+  document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && docsDrawer.hasAttribute('data-open')) closeDocs(); });
+
+/* ===== Summary widgets (beauty presets con Speed Gauge oficial) — FULL BLOCK REPLACEMENT ===== */
+/* ============ Helpers de UI (overlay "Updating…" + hora en título) ============ */
+(() => {
+  if (document.getElementById('summary-style-overrides')) return;
+  const st = document.createElement('style');
+  st.id = 'summary-style-overrides';
+  st.textContent = `
+    .summary-card{position:relative}
+    .summary-updating{position:absolute;inset:8px;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.10);backdrop-filter:blur(1px);border-radius:12px;font-weight:700;color:#aeb9c6;letter-spacing:.3px}
+    .summary-card.loading .summary-updating{display:flex}
+    .summary-card .fs-btn{position:absolute;top:8px;right:8px;z-index:2}
+    .summary-card h3{display:flex;align-items:center;gap:.5rem}
+    .summary-card .title-time{opacity:.7;font-weight:500;font-size:.9rem}
+  `;
+  document.head.appendChild(st);
+})();
+
+function __sumEnsureDecor(card){
+  if(!card) return;
+  // overlay
+  if(!card.querySelector('.summary-updating')){
+    const o = document.createElement('div');
+    o.className = 'summary-updating';
+    o.textContent = 'Updating…';
+    card.appendChild(o);
+  }
+  // span de tiempo en <h3>
+  const h3 = card.querySelector('h3');
+  if(h3 && !h3.querySelector('.title-time')){
+    const s = document.createElement('span');
+    s.className = 'title-time';
+    s.textContent = '';
+    h3.appendChild(s);
+  }
+  // botón fullscreen si no existe
+  if(!card.querySelector('.fs-btn')){
+    const b = document.createElement('button');
+    b.className = 'icon-btn fs-btn';
+    b.title = 'Fullscreen';
+    b.setAttribute('aria-label','Fullscreen');
+    b.innerHTML = '<i data-lucide="maximize-2"></i>';
+    card.appendChild(b);
+    if (window.lucide) window.lucide.createIcons();
+  }
+}
+function __sumSetLoading(card, on){ if(!card) return; __sumEnsureDecor(card); card.classList.toggle('loading', !!on); }
+function __fmtTs(ts){
+  if(!ts) return {text:'—', title:'—'};
+  const d = new Date(ts);
+  return {
+    text:  d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
+    title: d.toLocaleString('es-ES',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})
+  };
+}
+function __sumSetTitleTime(card, ts){
+  if(!card) return;
+  __sumEnsureDecor(card);
+  const slot = card.querySelector('.title-time');
+  if(!slot) return;
+  const {text, title} = __fmtTs(ts);
+  slot.textContent = `• ${text}`;
+  slot.title = `Hora de la medición: ${title}`;
+}
+
+/* ================== Config de Summary (4 tarjetas) ================== */
+const SUMMARY = {
+  findex:      { dom:'sum-findex', src: SERIES.findex,       min:0,   max:6.1,unit:'',    type:'findexGauge' },
+  temperature: { dom:'sum-temp',   src: SERIES.temperature,  min:-10, max:50, unit:'°C',  type:'thermoGlass' },
+  humidity:    { dom:'sum-hum',    src: SERIES.humidity,     min:0,   max:100,unit:'%',   type:'droplet'     },
+  wind:        { dom:'sum-wind',   src: SERIES.wind,         min:0,   max:30, unit:'m/s', type:'speedGauge'  }
+};
+const clamp = (v,min,max)=> Math.max(min, Math.min(max, v));
+const norm  = (v,min,max)=> (clamp(v,min,max)-min) / (max-min);
+const valStr= (v,u)=> (v==null||Number.isNaN(v)) ? '—' : `${(+v).toFixed(1)}${u?` ${u}`:''}`;
+
+/* ================== Widgets bonitos ================== */
+// 1) F Index — gauge con bandas
+function riskGaugeOption(cfg, val, el){
+  const PAD=8, w=el.clientWidth||600, h=el.clientHeight||300;
+  const cy=Math.round(h*0.68), cx=Math.round(w/2);
+  const rByW=Math.floor((w-PAD*2)/2), rByT=cy-PAD, rByB=Math.max(40,h-cy-PAD);
+  const R=Math.max(60,Math.min(rByW,rByT,rByB));
+  const ring=Math.max(10,Math.round(R*0.16));
+  const bands=[{t:0.25,c:'#ef4444'},{t:0.50,c:'#f59e0b'},{t:0.75,c:'#facc15'},{t:1.00,c:'#22c55e'}];
+  const frac=norm(val??0,cfg.min,cfg.max);
+  const cur=(bands.find(b=>frac<=b.t)||bands.at(-1)).c;
+  return {
+    animation:false,
+    series:[{
+      type:'gauge', center:[cx,cy], radius:R, startAngle:210, endAngle:-30,
+      min:cfg.min, max:cfg.max, splitNumber:10,
+      axisLine:{ lineStyle:{ width:ring, color: bands.map(b=>[b.t,b.c]) } },
+      progress:{ show:true, width:ring, roundCap:true, itemStyle:{ color:cur } },
+      pointer:{ show:false }, axisTick:{ show:false },
+      splitLine:{ length: Math.round(ring*0.7), lineStyle:{ color:'#6E7079', width:2 } },
+      axisLabel:{ distance: Math.round(ring*0.9), color:'#9fb0c3', fontSize:12, formatter:v=>v.toFixed(2) },
+      detail:{ fontSize: Math.max(24,Math.round(R*0.34)), fontWeight:900, color:'#e9f0f6', offsetCenter:[0,'-6%'], formatter:()=>valStr(val,cfg.unit) },
+      data:[{ value: clamp(val??0,cfg.min,cfg.max) }]
+    }]
+  };
+}
+
+// 2) Termómetro (estilo “glass”)
+// 2) Termómetro (estilo “glass”) — HORIZONTAL (estética similar a Grafana)
+function thermoGlassOption(cfg, val, el){
+  // Mantener fondo intacto: no dibujamos overlays globales
+  // ======= Constantes inspiradas en el panel de Grafana =======
+  const FONT = 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+  const FS = { tick: 11, value: 32 };
+  const MIN = cfg.min, MAX = cfg.max;
+  const STEP = 10;
+
+  // Geometría del tubo/mercurio (px)
+  const TUBE_THK = 26;    // alto del tubo (grosor)
+  const FILL_THK = 18;    // alto del mercurio
+  const BULB_D   = 54;    // diámetro del bulbo
+  const SCALE_OFFSET = 10; // separación desde la tangente del bulbo a los ticks/labels
+  const FILL_OVERLAP = 14; // superposición del mercurio dentro del bulbo
+  const RING_ADJUST  = 0;  // 0=justo, >0 separa un poco el aro del vidrio
+
+  const PAD = 12;
+  const w = el.clientWidth  || 600;
+  const h = el.clientHeight || 300;
+  const midY = Math.round(h/2);
+
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x==null? a : x));
+  const v = clamp(val, MIN, MAX);
+  const colorFor = (vv) => {
+    // Continuous hue: MIN -> blue (220deg), MAX -> red (0deg)
+    const t = (vv - MIN) / (MAX - MIN);
+    const cl = Math.max(0, Math.min(1, isNaN(t) ? 0 : t));
+    const hue = 220 * (1 - cl);               // 220 (blue) → 0 (red)
+    const sat = 90;                            // saturation 0-100
+    const lig = 55;                            // lightness 0-100
+    return `hsl(${hue}, ${sat}%, ${lig}%)`;
+  };
+
+  // Paleta (modo oscuro asumido en tu sitio)
+  const textMain  = '#e6e9ef';
+  const textSub   = '#aeb4bf';
+  const glassEdge = 'rgba(255,255,255,.22)';
+  const tubeBG    = 'rgba(255,255,255,.12)';
+  const fillColor = colorFor(v);
+
+  // Gradientes
+  const tubeGradient = { type:'linear', x:0, y:0, x2:1, y2:0,
+    colorStops:[
+      {offset:0.00, color:'rgba(255,255,255,.25)'},
+      {offset:0.08, color:tubeBG},
+      {offset:0.92, color:tubeBG},
+      {offset:1.00, color:'rgba(255,255,255,.08)'}
+    ]
+  };
+  const mercuryGradient = {
+    type: 'linear', x: 0, y: 0, x2: 1, y2: 0,
+    colorStops: [
+      { offset: 0.00, color: fillColor },
+      { offset: 0.60, color: fillColor },
+      { offset: 1.00, color: '#fefefe' }
+    ]
+  };
+
+  // Layout horizontal
+  const R = BULB_D/2;
+  const xBulbCenter = PAD + R;
+  const xBulbRight  = PAD + BULB_D;              // tangente derecha del bulbo
+  const xMax        = w - PAD;                   // extremo derecho del tubo
+  const tubeSpan    = xMax - xBulbRight;
+
+  // Límites verticales del tubo
+  const yTopTube = midY - TUBE_THK/2;
+  const yBotTube = midY + TUBE_THK/2;
+
+  // Escala: arranca unos px a la derecha de la tangencia para que los labels no choquen
+  const xScaleStart = xBulbRight + SCALE_OFFSET;
+  const xFor = (vv) => {
+    const t = (clamp(vv, MIN, MAX) - MIN) / (MAX - MIN);
+    return xScaleStart + t * (xMax - xScaleStart);
+  };
+  const xVal = xFor(v);
+
+  // Lista de gráficos
+  const g = [];
+
+  // TUBO (relleno de vidrio, sin borde izquierdo)
+  g.push({ type:'rect', shape:{ x:xBulbRight, y:yTopTube, width:tubeSpan, height:TUBE_THK },
+           style:{ fill:tubeGradient }});
+
+  // BULBO (color según valor)
+  g.push({ type:'circle', shape:{ cx:xBulbCenter, cy:midY, r:R },
+           style:{ fill: fillColor , shadowBlur:14, shadowColor: fillColor }});
+
+  // MERCURIO (entra un poco en el bulbo por la izquierda)
+  const yFillTop = midY - FILL_THK/2;
+  const xFillLeft = xBulbRight - FILL_OVERLAP;
+  const fillW = Math.max(1, xVal - xFillLeft);
+  g.push({ type:'rect', shape:{ x:xFillLeft, y:yFillTop, width:fillW, height:FILL_THK },
+          style:{ fill:mercuryGradient, shadowBlur:8, shadowColor:fillColor } });
+
+  // ARO DE VIDRIO del bulbo (solo lado izquierdo, recortado)
+  const ringRadius = R + 3;
+  const clipX = xBulbCenter - (ringRadius + 2);
+  const clipY = midY - (ringRadius + 2);
+  const clipW = (xBulbRight + RING_ADJUST) - clipX;
+  const clipH = (ringRadius + 2) * 2 + 4;
+  g.push({
+    type:'circle', shape:{ cx:xBulbCenter, cy:midY, r:ringRadius },
+    style:{ fill:'transparent', stroke:glassEdge, lineWidth:1.2 },
+    clipPath:{ type:'rect', shape:{ x:clipX, y:clipY, width:clipW, height:clipH } }
+  });
+
+  // BORDES de “vidrio” del tubo (arriba, abajo y derecha)
+  g.push({ type:'line', shape:{ x1:xBulbRight, y1:yTopTube, x2:xMax, y2:yTopTube },
+           style:{ stroke:glassEdge, lineWidth:1 }});
+  g.push({ type:'line', shape:{ x1:xBulbRight, y1:yBotTube, x2:xMax, y2:yBotTube },
+           style:{ stroke:glassEdge, lineWidth:1 }});
+  g.push({ type:'line', shape:{ x1:xMax, y1:yTopTube, x2:xMax, y2:yBotTube },
+           style:{ stroke:glassEdge, lineWidth:1 }});
+
+  // TICKS y labels (debajo del tubo)
+  const TICK_LEN = 10;
+  const TICK_GAPY = 8;
+  const tickY1 = yBotTube + TICK_GAPY;
+  const tickY2 = tickY1 + TICK_LEN;
+  for (let t=Math.ceil(MIN/STEP)*STEP; t<=MAX; t+=STEP){
+    const px = xFor(t);
+    g.push({ type:'line', shape:{ x1:px, y1:tickY1, x2:px, y2:tickY2 },
+             style:{ stroke:textSub, lineWidth:1 }});
+    g.push({ type:'text',
+      style:{ text:`${t}°`, x:px, y:tickY2+12, textAlign:'center', textVerticalAlign:'top',
+              fill:textMain, fontSize:FS.tick, fontWeight:600, fontFamily:FONT }
+    });
+  }
+
+  // ETIQUETA DE VALOR (encima de la punta del mercurio)
+  const unit = (cfg.unit ? ` ${cfg.unit}` : '');
+  const label = (val==null || Number.isNaN(val)) ? '—' : `${(+val).toFixed(1)}${unit}`;
+  g.push({ type:'text',
+    style:{ text:label, x: w/2, y:yTopTube-12, textAlign:'center', textVerticalAlign:'bottom',
+            fill: fillColor, fontSize:FS.value, fontWeight:800, fontFamily:FONT }
+  });
+
+  return { animation:false, graphic:g, textStyle:{ fontFamily:FONT } };
+}
+
+// 3) Gota (echarts-liquidfill)
+function dropletOption(cfg,val,el){
+  const pct = clamp(val??0,cfg.min,cfg.max)/(cfg.max-cfg.min);
+  const font = Math.max(24, Math.round(Math.min(el.clientWidth||600, el.clientHeight||300)*0.20));
+  return {
+    animation:false,
+    series:[{
+      type:'liquidFill', center: ['50%', '50%'], radius: '80%',
+      data:[pct, Math.max(0,pct*0.96), Math.max(0,pct*0.90)],
+      outline:{ show:true, itemStyle:{ borderColor:'#1e2936', borderWidth:3 }, borderDistance:2 },
+      backgroundStyle:{ color:'transparent' },
+      color:['#60a5fa','#93c5fd','#38bdf8'],
+      label:{ show:true, formatter:()=>valStr(val,cfg.unit), fontSize:font, color:'#e9f0f6', fontWeight:900 }
+    }]
+  };
+}
+
+// 4) Velocímetro (autoswitch abajo/centrado) + overlay del valor y separaciones
+function speedGaugeOption(cfg, val, el){
+  const w = el.clientWidth  || 600;
+  const h = el.clientHeight || 280;
+  const PAD  = 12;
+  const RING = 18;
+
+  const landscape = (w / Math.max(1, h)) > 1.35; // abajo si es bajo/ancho
+
+  const cx = Math.round(w / 2);
+  let cy, R;
+  if (landscape) {
+    cy = h - PAD;
+    const rW = (w - 2*PAD) / 2;
+    const rT = cy - PAD;
+    R = Math.max(60, Math.floor(Math.min(rW, rT)));
+  } else {
+    cy = Math.round(h / 2);
+    const rW       = (w - 2*PAD) / 2;
+    const rTop     = cy - PAD;
+    const extraBot = 26 + Math.round(RING * 0.6);  // hueco para valor/split line
+    const rBottom  = (h - cy) - PAD - extraBot;
+    R = Math.max(60, Math.floor(Math.min(rW, rTop, rBottom)));
+  }
+  const center = [`${(cx/w*100).toFixed(3)}%`, `${(cy/h*100).toFixed(3)}%`];
+
+  const unit  = cfg.unit || 'm/s';
+  const value = Math.max(cfg.min, Math.min(cfg.max, (val==null||Number.isNaN(val)) ? 0 : val));
+  const t1 = 2, t2 = 6, t3 = 12;
+  const f1 = t1 / cfg.max, f2 = t2 / cfg.max, f3 = t3 / cfg.max;
+
+  // separación visual
+  const LABEL_GAP = Math.max(14, Math.round(R * 0.11));
+  const TICK_LEN  = Math.round(RING * 0.50);
+
+  // overlay del valor (siempre por encima de la aguja)
+  const detailFont    = Math.max(14, Math.round(R * 0.18));
+  const detailOffsetY = landscape ? -Math.round(R * 0.22) : Math.round(R * 0.20);
+  const overlayX      = cx;
+  const overlayY      = cy + detailOffsetY;
+  const valueText = valStr(val, unit);
+
+  return {
+    animation:false,
+    series:[{
+      type:'gauge',
+      startAngle:180, endAngle:0,
+      min:cfg.min, max:cfg.max, splitNumber:10,
+      center, radius:R,
+      axisLine:{ lineStyle:{ width:RING, color:[
+        [f1,'#55BF3B'],  // 0–2
+        [f2,'#DDDF0D'],  // 2–6
+        [f3,'#f59e0b'],  // 6–12
+        [1,'#DF5353']    // 12–máx
+      ]}},
+      progress:{ show:true, width:RING },
+      pointer:{ show:true, length:'60%', width:6, itemStyle:{ color:'#9aa4b2' } },
+      axisTick:{ show:false },
+      splitLine:{ length:TICK_LEN, lineStyle:{ width:2, color:'#9fb0c3' } },
+      axisLabel:{ distance:LABEL_GAP, color:'#9fb0c3', fontSize:12 },
+      anchor:{ show:true, showAbove:true, size:18, itemStyle:{ borderWidth:6 } },
+      title:{ show:false },
+      detail:{ show:false },
+      data:[{ value }]
+    }],
+    graphic: [{
+      id: 'wind-value-overlay',
+      type: 'text',
+      x: overlayX, y: overlayY, z: 100, silent: true,
+      style: { text: valueText, fill: '#e9f0f6', font: `800 ${detailFont}px system-ui, -apple-system, Segoe UI, Roboto`, align:'center', verticalAlign:'middle' }
+    }]
+  };
+}
+
+// --- F Index: etiqueta de riesgo en inglés (según los rangos dados)
+// Texto de riesgo según valor
+function fIndexRiskLabel(v){
+  if (v == null || Number.isNaN(v)) return '—';
+  if (v < 0.7)  return 'Low';
+  if (v < 1.5)  return 'Moderate';
+  if (v < 2.7)  return 'High';
+  if (v <= 6.1) return 'Very High';
+  return 'Extreme';
+}
+
+// Mezcla de colores (hex -> hex) para la transición naranja→rojo
+function mixHex(c1, c2, t){
+  const h2r = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const r2h = (r,g,b)=>"#"+[r,g,b].map(x=>Math.max(0,Math.min(255,Math.round(x))).toString(16).padStart(2,"0")).join("");
+  const [r1,g1,b1] = h2r(c1), [r2,g2,b2] = h2r(c2);
+  return r2h(r1+(r2-r1)*t, g1+(g2-g1)*t, b1+(b2-b1)*t);
+}
+
+function fIndexGaugeOption(cfg, val, el){
+  const w = el.clientWidth  || 600;
+  const h = el.clientHeight || 280;
+  const PAD = 12;
+  const RING = 18;
+
+  // Geometría responsive
+  const landscape = (w / Math.max(1,h)) > 1.35;
+  const cx = Math.round(w/2);
+  let cy, R;
+  if (landscape){
+    cy = h - PAD;
+    const rW = (w - 2*PAD)/2;
+    const rT = cy - PAD;
+    R = Math.max(60, Math.floor(Math.min(rW, rT)));
+  }else{
+    cy = Math.round(h/2);
+    const rW      = (w - 2*PAD)/2;
+    const rTop    = cy - PAD;
+    const extra   = 26 + Math.round(RING*0.6);
+    const rBottom = (h - cy) - PAD - extra;
+    R = Math.max(60, Math.floor(Math.min(rW, rTop, rBottom)));
+  }
+  const center = [`${(cx/w*100).toFixed(3)}%`, `${(cy/h*100).toFixed(3)}%`];
+
+  // Rango y colores
+  const MIN=0, MAX=6.1;
+  const vRaw = (val==null||Number.isNaN(val)) ? 0 : val;
+  const v    = Math.max(MIN, Math.min(MAX, vRaw));
+
+  const COLORS = {
+    low:      '#2ecc71',
+    mod:      '#9bd23c',
+    high:     '#f1c40f',
+    veryHigh: '#e67e22', // naranja
+    extreme:  '#e74c3c'  // rojo
+  };
+
+  // Color activo
+  const activeColor =
+      v < 0.7 ? COLORS.low :
+      v < 1.5 ? COLORS.mod :
+      v < 2.7 ? COLORS.high :
+      v < MAX ? COLORS.veryHigh : COLORS.extreme;
+
+  // Transición naranja→rojo entre 2.7 y 6.1 (muchos segmentos)
+  const stops = [
+    [0.7/MAX, COLORS.low],
+    [1.5/MAX, COLORS.mod],
+    [2.7/MAX, COLORS.high]
+  ];
+  const segs = 14; // más grande -> transición más suave
+  for (let i=0;i<=segs;i++){
+    const t = i/segs;                        // 0..1
+    const x = 2.7 + (MAX-2.7)*t;             // 2.7..6.1
+    stops.push([x/MAX, mixHex(COLORS.veryHigh, COLORS.extreme, t)]);
+  }
+
+  // Utilidades para posicionar marcas por dentro del anillo
+  const radFor  = (x)=> Math.PI - ((x-MIN)/(MAX-MIN))*Math.PI;
+  const ptOn    = (r, rad)=>({x: cx + Math.cos(rad)*r, y: cy - Math.sin(rad)*r});
+  const BOUNDS  = [0.0, 0.7, 1.5, 2.7, 6.1];
+
+  // Marcas internas (barrita + número)
+  const tickLen   = Math.round(RING*0.75);
+  const labelRad  = R - RING*1.45;        // radio del número (dentro)
+  const tickOuter = R - RING*0.20;        // borde interior del anillo
+  const tickInner = tickOuter - tickLen;  // hacia dentro
+  const tickGfx = [];
+  for (const b of BOUNDS){
+    const rad = radFor(b);
+    const p1  = ptOn(tickOuter, rad);
+    const p2  = ptOn(tickInner, rad);
+    tickGfx.push({
+      type:'line', z:60, silent:true,
+      shape:{x1:p1.x, y1:p1.y, x2:p2.x, y2:p2.y},
+      style:{stroke:'#a9b6c6', lineWidth:2}
+    });
+    const pTxt = ptOn(labelRad, rad);
+    tickGfx.push({
+      type:'text', z:60, silent:true,
+      x:pTxt.x, y:pTxt.y,
+      style:{
+        text:(b===0?'0.0':b.toFixed(1)),
+        fill:'#9fb0c3',
+        align:'center', verticalAlign:'middle',
+        font:'12px system-ui, -apple-system, Segoe UI, Roboto'
+      }
+    });
+  }
+
+  // Valor + Riesgo dentro del anillo
+  const valueFont = Math.max(14, Math.round(R*0.20));
+  const riskFont  = Math.max(12, Math.round(R*0.16));
+  const valueY    = cy - Math.round(R*0.14); // dentro, bajo el riesgo
+  const riskY     = cy - Math.round(R*0.33); // dentro, encima del valor
+
+  const graphics = [
+    { type:'text', x:cx, y:riskY, z:90, silent:true,
+      style:{ text:fIndexRiskLabel(val), fill:activeColor,
+              font:`900 ${riskFont}px system-ui, -apple-system, Segoe UI, Roboto`,
+              align:'center', verticalAlign:'middle' } },
+    { type:'text', x:cx, y:valueY, z:90, silent:true,
+      style:{ text:valStr(val, cfg.unit), fill:activeColor,
+              font:`900 ${valueFont}px system-ui, -apple-system, Segoe UI, Roboto`,
+              align:'center', verticalAlign:'middle' } },
+    ...tickGfx
+  ];
+
+  return {
+    animation:false,
+    series:[{
+      type:'gauge',
+      startAngle:180, endAngle:0,
+      min:MIN, max:MAX,
+      center, radius:R,
+      axisLine:{ lineStyle:{ width:RING, color: stops } },
+      progress:{ show:true, width:RING },
+      pointer:{ show:true, length:'60%', width:6, itemStyle:{ color:'#9aa4b2' } },
+
+      // Ocultamos ticks/labels automáticos para evitar duplicados
+      axisTick:{ show:false },
+      splitLine:{ show:false },
+      axisLabel:{ show:false },
+
+      title:{ show:false },
+      detail:{ show:false },
+      anchor:{ show:true, showAbove:true, size:18, itemStyle:{ borderWidth:6 } },
+      data:[{ value:v }]
+    }],
+    graphic: graphics
+  };
+}
+
+/* ============== Router de renderer (elige widget según tipo) ============== */
+function echRenderer(type){
+  switch(type){
+    case 'riskGauge':     return riskGaugeOption;
+    case 'thermoGlass':   return thermoGlassOption;
+    case 'droplet':       return dropletOption;
+    case 'speedGauge':    return speedGaugeOption;
+    case 'findexGauge':   return fIndexGaugeOption;
+    default:              return riskGaugeOption;
+  }
+}
+
+/* ===================== Inicialización + Fullscreen + Live ===================== */
+function initSummary(){
+  const inst = {};     // { key: { chart, card, el } }
+  const lastVal = {};  // último valor
+  const lastTs  = {};  // timestamp real
+
+  // Instanciar charts y decorar tarjetas
+  for (const [k,cfg] of Object.entries(SUMMARY)){
+    const el = document.getElementById(cfg.dom);
+    if (!el) continue;
+    const card = el.closest('.summary-card');
+    __sumEnsureDecor(card);
+    inst[k] = { chart: echarts.init(el, 'dark'), el, card, cfg };
+  }
+
+  // Fullscreen por tarjeta
+  Object.values(inst).forEach(({card, chart, el, cfg})=>{
+    const btn = card.querySelector('.fs-btn');
+    const setIcon = (fs)=>{ const i=btn.querySelector('i'); if(i){ i.setAttribute('data-lucide', fs?'minimize-2':'maximize-2'); if(window.lucide) window.lucide.createIcons(); } };
+    btn.addEventListener('click', async ()=>{
+      try{
+        const entering = document.fullscreenElement!==card && document.webkitFullscreenElement!==card;
+        if (entering) await (card.requestFullscreen?.()||card.webkitRequestFullscreen?.());
+        else await (document.exitFullscreen?.()||document.webkitExitFullscreen?.());
+      } finally {
+        setTimeout(()=>{ chart.resize(); updateOne(cfg.key||Object.keys(SUMMARY).find(x=>SUMMARY[x]===cfg), {resize:true}); }, 80);
+      }
+    });
+    const onFS=()=>{ const on=(document.fullscreenElement===card)||(document.webkitFullscreenElement===card); setIcon(on); setTimeout(()=>{ chart.resize(); updateOne(cfg.key||Object.keys(SUMMARY).find(x=>SUMMARY[x]===cfg), {resize:true}); }, 80); };
+    document.addEventListener('fullscreenchange', onFS);
+    document.addEventListener('webkitfullscreenchange', onFS);
+  });
+
+  async function fetchLast(cfg){
+    // Pedimos últimos 5 minutos RAW y tomamos el último punto real
+    const data = await fetchSeries(cfg.src, composeParams('5m','raw'));
+    const pts  = data?.points || [];
+    if (!pts.length) return {v:null, ts:null};
+    const p = pts[pts.length-1];
+    return { v:+p.value, ts:new Date(p.ts).getTime() };
+  }
+
+  async function updateOne(key, {resize=false}={}){
+    const core = inst[key]; if (!core) return;
+    const {card, chart, el, cfg} = core;
+
+    __sumSetLoading(card, true);
+    try{
+      let v, ts;
+      if (resize){
+        if (lastVal[key]==null){ const r = await fetchLast(cfg); lastVal[key]=r.v; lastTs[key]=r.ts; }
+        v = lastVal[key]; ts = lastTs[key];
+      } else {
+        const r = await fetchLast(cfg);
+        v = lastVal[key] = r.v;
+        ts = lastTs[key] = r.ts;
+      }
+
+      chart.setOption(echRenderer(cfg.type)(cfg, v, el), true);
+      chart.resize();
+      __sumSetTitleTime(card, ts);
+    } catch(e){
+      console.error('[summary:updateOne]', key, e);
+    } finally {
+      __sumSetLoading(card, false);
+    }
+  }
+
+  function tick(){ for (const k of Object.keys(SUMMARY)) updateOne(k); }
+  // Primera carga + live cada 10s, alineado a reloj local
+  let __cancelSummaryLive = scheduleAligned(10000, tick);
+
+  // Resize global + ResizeObserver fino
+  const rerenderAll = ()=>{ for (const k of Object.keys(SUMMARY)){ inst[k]?.chart?.resize(); updateOne(k,{resize:true}); } };
+  window.addEventListener('resize', rerenderAll);
+  const ro = new ResizeObserver(rerenderAll);
+  document.querySelectorAll('#panel-summary .kpichart').forEach(n=> ro.observe(n));
+}
+initSummary();
+
+// Lucide
+  if (window.lucide){ window.lucide.createIcons(); }
+})();
+</script>
+</body>
+</html>
